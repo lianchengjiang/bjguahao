@@ -14,6 +14,7 @@ import logging
 from lib.prettytable import PrettyTable
 import base64
 
+
 if sys.version_info.major != 3:
     logging.error("请在python3环境下运行本程序")
     sys.exit(-1)
@@ -188,6 +189,10 @@ class Guahao(object):
             data = json.loads(response.text)
             json.dump(data, file, ensure_ascii=False, sort_keys=True, indent=4, separators=(',', ': '))
 
+    def find_depart(self, hospital_id):
+        url = "http://www.scgh114.com/web/hospital/findDepartByHosId"
+        response = self.browser.post(url, data={'hospitalId': hospital_id})
+        logging.info('departs:' + response.text)
 
     def auth_login(self):
         """
@@ -509,3 +514,5 @@ if __name__ == "__main__":
     # guahao.run()
     guahao.update_hospital_list()
     # guahao.auth_login()
+
+    guahao.find_depart(15)
