@@ -185,7 +185,9 @@ class Guahao(object):
         response = self.browser.post(hospital_list_url, data={'areaId': area_id})
         logging.info("更新医院列表完成：" + response.text)
         with open('hospital_list.json', 'w') as file:
-            file.write(response.text)
+            data = json.loads(response.text)
+            json.dump(data, file, ensure_ascii=False, sort_keys=True, indent=4, separators=(',', ': '))
+
 
     def auth_login(self):
         """

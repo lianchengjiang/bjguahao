@@ -4,3 +4,4 @@
 *.yaml
 
 !config.yaml
+/venv
