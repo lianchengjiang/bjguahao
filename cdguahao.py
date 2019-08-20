@@ -13,6 +13,10 @@ import datetime
 import logging
 from lib.prettytable import PrettyTable
 import base64
+import pytesseract
+from PIL import Image
+from PIL import ImageEnhance
+
 
 
 if sys.version_info.major != 3:
@@ -178,9 +182,11 @@ class Guahao(object):
             logging.error(e)
             return False
 
-    def update_hospital_list(self):
+    def get_cookie(self):
         cookie_url = "http://www.scgh114.com/"
         self.browser.get(cookie_url,data={})
+
+    def update_hospital_list(self):
         hospital_list_url = "http://www.scgh114.com/web/hospital/findHospital"
         area_id = 10100  # 成都
         response = self.browser.post(hospital_list_url, data={'areaId': area_id})
@@ -193,6 +199,80 @@ class Guahao(object):
         url = "http://www.scgh114.com/web/hospital/findDepartByHosId"
         response = self.browser.post(url, data={'hospitalId': hospital_id})
         logging.info('departs:' + response.text)
+
+    def convert_image(slef, img, standard=127.5):
+        '''
+        【图片裁剪】
+        '''
+        width = img.size[0]  # 图片大小
+        height = img.size[1]
+        border = 1
+        img = img.crop((border, border, width-border, height-border))
+
+        '''
+        【图片放大】
+        图片太小无法识别
+        '''
+        scale = 10
+        img = img.resize((scale * img.size[0], scale * img.size[1]))
+
+        '''
+        【灰度转换】
+        '''
+        image = img.convert('L')
+
+        '''
+        【二值化】
+        根据阈值 standard , 将所有像素都置为 0(黑色) 或 255(白色), 便于接下来的分割
+        '''
+        pixels = image.load()
+        for x in range(image.width):
+            for y in range(image.height):
+                if pixels[x, y] > standard:
+                    pixels[x, y] = 255
+                else:
+                    pixels[x, y] = 0
+        return image
+
+    def verify_code(self):
+        url = 'http://www.scgh114.com/weixin/drawImage/code'
+        response = self.browser.post(url, data={})
+        path = os.getcwd() + '/verify_code.png'
+        with open(path, 'wb') as file:
+            file.write(response.content)
+        image = Image.open(path)
+        image.show()
+        image = self.convert_image(image, 220)
+
+        image.show()
+        code = pytesseract.image_to_string(image, lang='enm')
+
+
+        logging.info('验证码：' + code)
+
+    def registered(self):
+        url = 'http://www.scgh114.com/web/register/registrationByType'
+        params = {
+            'workrecordid': 1,
+            'hospitalno': '',  #医院编号
+            'hospitalname': '', #医院名称
+            'hospitaid': 88,  #医院id
+            'isRealNameCard': 0, # 实名卡
+            'iscertificateid': 0, # 身份证
+            'workid': 789084, #
+            'dutydate': '2019-08-20', #就诊日期
+            'doctorid':	21949, #医生id
+            'workDutyTimeNum': 	3, # 1表示上午，3表示下午
+            'dutytime': '下午',
+            'doctorName': '沙晓伟',
+            'type': 	1,
+            'hospitalFlag': 	1,
+            'username': '蒋连成',
+            'certificateid': '450325199009171518',
+            'tel': '18611471270',
+            'txcode': 'xieu', #验证码
+            'sex': 	1
+        }
 
     def auth_login(self):
         """
@@ -512,7 +592,9 @@ if __name__ == "__main__":
     else:
         guahao = Guahao()
     # guahao.run()
-    guahao.update_hospital_list()
+    # guahao.update_hospital_list()
     # guahao.auth_login()
 
-    guahao.find_depart(15)
+    # guahao.find_depart(15)
+    guahao.get_cookie()
+    guahao.verify_code()
