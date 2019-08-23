@@ -17,6 +17,20 @@ import pytesseract
 from PIL import Image
 from PIL import ImageEnhance
 
+class Hospital(object):
+    def __init__(self):
+        self.hospitalname = ''
+        self.hospitalid = 0
+        self.hospitalno = ''
+        self.registerType = 0
+        self.ishospitalcard = 0
+        self.iscertificateid = 0
+        self.Ismedicalcard = 0
+        self.isresidentcard = 0
+        self.address = ''
+        self.levelName = ''
+        self.image = ''
+        self.areaName = ''
 
 
 if sys.version_info.major != 3:
@@ -122,7 +136,6 @@ class Guahao(object):
     """
     挂号
     """
-
     def __init__(self, config_path="config.yaml"):
         self.browser = Browser()
         self.dutys = ""
@@ -152,35 +165,6 @@ class Guahao(object):
                 self.qpython3 = None
         else:
             self.qpython3 = None
-
-    def is_login(self):
-
-        logging.info("开始检查是否已经登录")
-        hospital_id = self.config.hospital_id
-        department_id = self.config.department_id
-        duty_code = self.config.duty_code
-        duty_date = self.config.date
-
-        payload = {
-            'hospitalId': hospital_id,
-            'departmentId': department_id,
-            'dutyCode': duty_code,
-            'dutyDate': time.strftime("%Y-%m-%d"),
-            'isAjax': True
-        }
-
-        response = self.browser.post(self.get_doctor_url, data=payload)
-        try:
-            data = json.loads(response.text)
-            if data["code"] == 200 and data["msg"] == "OK":
-                logging.debug("response data:" + response.text)
-                return True
-            else:
-                logging.debug("response data: HTML body")
-                return False
-        except Exception as e:
-            logging.error(e)
-            return False
 
     def get_cookie(self):
         cookie_url = "http://www.scgh114.com/"
@@ -241,52 +225,74 @@ class Guahao(object):
         with open(path, 'wb') as file:
             file.write(response.content)
         image = Image.open(path)
-        image.show()
+        # image.show()
         image = self.convert_image(image, 220)
 
-        image.show()
+        # image.show()
         code = pytesseract.image_to_string(image, lang='enm')
-
-
+        code = code.replace(' ','')
         logging.info('验证码：' + code)
+        if len(code) == 4:
+            return code
+        else:
+            return self.verify_code()
+
 
     def registered(self):
         url = 'http://www.scgh114.com/web/register/registrationByType'
         params = {
-            'workrecordid': 1,
-            'hospitalno': '',  #医院编号
-            'hospitalname': '', #医院名称
+            'workrecordid': 4923097,
+            'hospitalno': 'SYY01',  #医院编号
+            'hospitalname': '四川省人民医院', #医院名称
             'hospitaid': 88,  #医院id
             'isRealNameCard': 0, # 实名卡
             'iscertificateid': 0, # 身份证
-            'workid': 789084, #
-            'dutydate': '2019-08-20', #就诊日期
-            'doctorid':	21949, #医生id
-            'workDutyTimeNum': 	3, # 1表示上午，3表示下午
-            'dutytime': '下午',
-            'doctorName': '沙晓伟',
+            'workid': 791209, #
+            'dutydate': '2019-08-23', #就诊日期
+            'doctorid':	12617, #医生id
+            'workDutyTimeNum': 	1, # 1表示上午，3表示下午
+            'dutytime': '上午',
+            'doctorName': '曾庆华',
             'type': 	1,
             'hospitalFlag': 	1,
             'username': '蒋连成',
             'certificateid': '450325199009171518',
             'tel': '18611471270',
-            'txcode': 'xieu', #验证码
+            'txcode': self.verify_code(), #验证码
             'sex': 	1
         }
+        response = self.browser.post(url, data=params)
+        try:
+            data = json.loads(response.text)
+            if data["state"] == 0:
+                # patch for qpython3
+                return True
+            elif data["msg"] == '':
+                self.auth_login(False)
+                return self.registered()
+            else:
+                logging.error(data["msg"])
+                raise Exception()
 
-    def auth_login(self):
+        except Exception as e:
+            logging.error(e)
+            logging.error("登陆失败")
+            sys.exit(-1)
+
+
+    def auth_login(self, use_cookie=True):
         """
         登陆
         """
-        try:
+        if (use_cookie):
+            try:
             # patch for qpython3
-            cookies_file = os.path.join(os.path.dirname(sys.argv[0]), "." + self.config.mobile_no + ".cookies")
-            self.browser.load_cookies(cookies_file)
-            if self.is_login():
-                logging.info("cookies登录成功")
+                cookies_file = os.path.join(os.path.dirname(sys.argv[0]), "." + self.config.mobile_no + ".cookies")
+                self.browser.load_cookies(cookies_file)
+                logging.info("cookies登录")
                 return True
-        except Exception as e:
-            pass
+            except Exception as e:
+               pass
 
         logging.info("cookies登录失败")
         logging.info("开始使用账号密码登陆")
@@ -297,7 +303,7 @@ class Guahao(object):
             'operPassword': password.encode()
         }
         response = self.browser.post(self.login_url, data=payload)
-        logging.debug("response data:" + response.text)
+        logging.info("response data:" + response.text)
         try:
             data = json.loads(response.text)
             if data["state"] == 0:
@@ -315,274 +321,7 @@ class Guahao(object):
             logging.error("登陆失败")
             sys.exit(-1)
 
-    def select_doctor(self):
-        """选择合适的大夫"""
-        hospital_id = self.config.hospital_id
-        department_id = self.config.department_id
-        duty_code = self.config.duty_code
-        duty_date = self.config.date
-
-        # log current date
-        logging.debug("当前挂号日期: " + self.config.date)
-
-        payload = {
-            'hospitalId': hospital_id,
-            'departmentId': department_id,
-            'dutyCode': duty_code,
-            'dutyDate': duty_date,
-            'isAjax': True
-        }
-
-        response = self.browser.post(self.get_doctor_url, data=payload)
-        logging.debug("response data:" + response.text)
-
-        try:
-            data = json.loads(response.text)
-            if data["msg"] == "OK" and not data["hasError"] and data["code"] == 200:
-                self.dutys = data["data"]
-
-        except Exception as e:
-            logging.error(repr(e))
-            sys.exit()
-
-        if len(self.dutys) == 0:
-            return "NotReady"
-
-        self.print_doctor()
-
-        if self.config.chooseBest:
-            doctors = self.dutys[::-1]
-        else:
-            doctors = self.dutys
-
-        for doctor in doctors:
-            if doctor["doctorName"] == self.config.doctorName and doctor['remainAvailableNumber']:
-                logging.info("选中:" + str(doctor["doctorName"]))
-                return doctor
-
-        for doctor in doctors:
-            if doctor['remainAvailableNumber']:
-                logging.info("选中:" + str(doctor["doctorName"]))
-                return doctor
-
-        return "NoDuty"
-
-    def print_doctor(self):
-
-        logging.info("当前号余量:")
-        x = PrettyTable()
-        x.border = True
-        x.field_names = ["医生姓名", "擅长", "号余量"]
-        for doctor in self.dutys:
-            x.add_row([doctor["doctorName"], doctor['skill'], doctor['remainAvailableNumber']])
-        print(x.get_string())
-        pass
-
-    def get_it(self, doctor, sms_code):
-        """
-        挂号
-        """
-        duty_source_id = str(doctor['dutySourceId'])
-        hospital_id = self.config.hospital_id
-        department_id = self.config.department_id
-        patient_id = self.config.patient_id
-        hospital_card_id = self.config.hospital_card_id
-        medicare_card_id = self.config.medicare_card_id
-        reimbursement_type = self.config.reimbursement_type
-        doctor_id = str(doctor['doctorId'])
-        if self.config.children == 'true':
-            cid_type = self.config.cid_type
-            children_name = self.config.children_name
-            children_idno = self.config.children_idno
-            children_gender = GetInformation(children_idno).get_sex()
-            children_birthday = GetInformation(children_idno).get_birthday()
-
-            payload = {
-                'dutySourceId': duty_source_id,
-                'hospitalId': hospital_id,
-                'departmentId': department_id,
-                'doctorId': doctor_id,
-                'patientId': patient_id,
-                'hospitalCardId': hospital_card_id,
-                'medicareCardId': medicare_card_id,
-                "reimbursementType": reimbursement_type,  # 报销类型
-                'smsVerifyCode': sms_code,  # TODO 获取验证码
-                'childrenName': children_name,
-                'childrenIdNo': children_idno,
-                'cidType': cid_type,
-                'childrenGender': children_gender,
-                'childrenBirthday': children_birthday,
-                'isAjax': True
-            }
-        else:
-            payload = {
-                'dutySourceId': duty_source_id,
-                'hospitalId': hospital_id,
-                'departmentId': department_id,
-                'doctorId': doctor_id,
-                'patientId': patient_id,
-                'hospitalCardId': hospital_card_id,
-                'medicareCardId': medicare_card_id,
-                "reimbursementType": reimbursement_type,  # 报销类型
-                'smsVerifyCode': sms_code,  # TODO 获取验证码
-                'childrenBirthday': "",
-                'isAjax': True
-            }
-        response = self.browser.post(self.confirm_url, data=payload)
-        logging.debug("payload:" + json.dumps(payload))
-        logging.debug("response data:" + response.text)
-
-        try:
-            data = json.loads(response.text)
-            if data["msg"] == "成功" and data["code"] == 1:
-                # 20181027,成功result：
-                # {"msg":"成功","code":1,"orderId":"97465746","isLineUp":false}
-                logging.info("挂号成功")
-                return True
-            if data["code"] == 8008:
-                # 重复订单，说明挂号成功
-                # {"code":8008,"msg":"科室预约规则检查重复订单","data":null}
-                logging.error(data["msg"])
-                return True
-            else:
-                logging.error(data["msg"])
-                return False
-
-        except Exception as e:
-            logging.error(repr(e))
-            time.sleep(1)
-
-    def gen_doctor_url(self, doctor):
-
-        return self.patient_id_url + str(self.config.hospital_id) + \
-               "-" + str(self.config.department_id) + "-" + str(doctor['doctorId']) + "-" + \
-               str(doctor['dutySourceId']) + ".htm"
-
-    def get_patient_id(self, doctor):
-
-        """获取就诊人Id"""
-        if isinstance(doctor, str):
-            # logging.error("没号了,  亲~")
-            # sys.exit(-1)
-            return  # 无号退出逻辑由上级函数run()负责
-        addr = self.gen_doctor_url(doctor)
-        response = self.browser.get(addr, "")
-        ret = response.text
-        m = re.search(
-            u'name="(?P<patientId>\d+)"><div class="imgShow"></div><div class="infoRight"><span class="name">' + self.config.patient_name,
-            ret)
-
-        if m is None:
-            sys.exit("获取患者id失败")
-        else:
-            self.config.patient_id = m.group('patientId')
-            logging.info("病人ID:" + self.config.patient_id)
-
-            return self.config.patient_id
-
-    def gen_department_url(self):
-        return self.department_url + str(self.config.hospital_id) + \
-               "-" + str(self.config.department_id) + ".htm"
-
-    def get_duty_time(self):
-        """获取放号时间"""
-        addr = self.gen_department_url()
-        response = self.browser.get(addr, "")
-        ret = response.text
-        # 放号时间
-        m = re.search('<span>更新时间：</span>每日(?P<refreshTime>\d{1,2}:\d{2})更新', ret)
-        refresh_time = m.group('refreshTime')
-        # 放号日期
-        m = re.search('<span>预约周期：</span>(?P<appointDay>\d+)<script.*', ret)
-        appoint_day = m.group('appointDay')
-
-        today = datetime.date.today()
-
-        # 优先确认最新可挂号日期
-        self.stop_date = today + datetime.timedelta(days=int(appoint_day))
-        logging.info("今日可挂号到: " + self.stop_date.strftime("%Y-%m-%d"))
-
-        # 自动挂最新一天的号
-        if self.config.date == 'latest':
-            self.config.date = self.stop_date.strftime("%Y-%m-%d")
-            logging.info("当前挂号日期变更为: " + self.config.date)
-
-        # 生成放号时间和程序开始时间
-        con_data_str = self.config.date + " " + refresh_time + ":00"
-        self.start_time = datetime.datetime.strptime(con_data_str, '%Y-%m-%d %H:%M:%S') + datetime.timedelta(
-            days=- int(appoint_day))
-        logging.info("放号时间: " + self.start_time.strftime("%Y-%m-%d %H:%M"))
-
-    def get_sms_verify_code(self):
-        """获取短信验证码"""
-        response = self.browser.post(self.send_code_url, "")
-        data = json.loads(response.text)
-        logging.debug(response.text)
-        if data["msg"] == "OK." and data["code"] == 200:
-            logging.info("获取验证码成功")
-            if self.imessage is not None:  # 如果使用 iMessage
-                code = self.imessage.get_verify_code()
-            elif self.qpython3 is not None:  # 如果使用 QPython3
-                code = self.qpython3.get_verify_code()
-            else:
-                code = input("输入短信验证码: ")
-            return code
-        elif data["msg"] == "短信发送太频繁" and data["code"] == 812:
-            logging.error(data["msg"])
-            sys.exit()
-        elif data["msg"] == "抱歉，短信验证码发送次数已达到今日上限！" and data["code"] == 817:
-            logging.error(data["msg"])
-            sys.exit()
-        else:
-            logging.error(data["msg"])
-            return None
-
-    def lazy(self):
-        cur_time = datetime.datetime.now() + datetime.timedelta(seconds=int(time.timezone + 8 * 60 * 60))
-        if self.start_time > cur_time:
-            seconds = (self.start_time - cur_time).total_seconds()
-            logging.info("距离放号时间还有" + str(seconds) + "秒")
-            sleep_time = seconds - 60
-            if sleep_time > 0:
-                logging.info("程序休眠" + str(sleep_time) + "秒后开始运行")
-                time.sleep(sleep_time)
-                # 自动重新登录
-                self.auth_login()
-        pass
-
-    def run(self):
-        """主逻辑"""
-        self.get_duty_time()
-        self.auth_login()  # 1. 登陆
-        self.lazy()
-        doctor = ""
-        while True:
-            doctor = self.select_doctor()  # 2. 选择医生
-            self.get_patient_id(doctor)  # 3. 获取病人id
-            if doctor == "NoDuty":
-                # 如果当前时间 > 放号时间 + 30s
-                if self.start_time + datetime.timedelta(seconds=30) < datetime.datetime.now():
-                    # 确认无号，终止程序
-                    logging.error("没号了,  亲~")
-                    break
-                else:
-                    # 未到时间，强制重试
-                    logging.debug("放号时间: " + self.start_time.strftime("%Y-%m-%d %H:%M"))
-                    logging.debug("当前时间: " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
-                    logging.info("没号了,但截止时间未到，重试中")
-                    time.sleep(1)
-            elif doctor == "NotReady":
-                logging.info("好像还没放号？重试中")
-                time.sleep(1)
-            else:
-                sms_code = self.get_sms_verify_code()  # 获取验证码
-                if sms_code is None:
-                    time.sleep(1)
-
-                result = self.get_it(doctor, sms_code)  # 4.挂号
-                if result:
-                    break  # 挂号成功
-
+    def inputSth(self):
 
 if __name__ == "__main__":
 
@@ -597,4 +336,6 @@ if __name__ == "__main__":
 
     # guahao.find_depart(15)
     guahao.get_cookie()
-    guahao.verify_code()
+    # guahao.update_hospital_list()
+    guahao.auth_login()
+    guahao.registered()
