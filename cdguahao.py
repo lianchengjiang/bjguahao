@@ -18,19 +18,110 @@ from PIL import Image
 from PIL import ImageEnhance
 
 class Hospital(object):
-    def __init__(self):
-        self.hospitalname = ''
-        self.hospitalid = 0
-        self.hospitalno = ''
-        self.registerType = 0
-        self.ishospitalcard = 0
-        self.iscertificateid = 0
-        self.Ismedicalcard = 0
-        self.isresidentcard = 0
-        self.address = ''
-        self.levelName = ''
-        self.image = ''
-        self.areaName = ''
+    hospitalname = ''
+    hospitalid = 0
+    hospitalno = ''
+    registerType = 0
+    ishospitalcard = 0
+    iscertificateid = 0
+    Ismedicalcard = 0
+    isresidentcard = 0
+    address = ''
+    levelName = ''
+    image = ''
+    areaName = ''
+    def __init__(self, dict):
+        self.__dict__ = dict
+
+    def description(self):
+        return self.hospitalname
+
+
+class Depart(object):
+    deptname = ''
+    deptno = ''
+    deptid = 0
+    def __init__(self, dict):
+        self.__dict__ = dict
+
+    def description(self):
+        return self.deptname
+
+
+class Doctor(object):
+    doctorId = 0
+    deptId = 0
+    doctorSpecialityName = ''
+    deptName = ''
+    hospitalNo = ''
+    doctorCode = ''
+    hospitalId = 0
+    degree = ''
+    doctorName = ''
+    image = ''
+    hospitalName = ''
+    extexperts = ''
+    iscertificateid = -1
+    ismedicalcard = -1
+    isresidentcard = -1
+    isRealNameCard = -1
+    registerType = -1
+    def __init__(self, dict):
+        self.__dict__ = dict
+
+    def merge(self, dict):
+        self.__dict__ = {**self.__dict__, **dict}
+
+    def description(self):
+        return self.degree + ' ' + self.doctorName
+
+class WorkInfo(object):
+    workRecordId = 0
+    workId = ''
+    months = 0
+    dutytime = 0
+    count = 0
+    price = ''
+    state = 0
+    scheduleTypeName = ''
+    dutydate = ''
+    dutytimestring = ''
+    def __init__(self, dict):
+        self.__dict__ = dict
+
+    def description(self):
+        time = '上午'
+        if self.dutytime == 3:
+            time = '下午'
+        return self.dutydate + time
+
+    @classmethod
+    def formart_workinfo_list(cls, list):
+        info_list = []
+        for dict in list:
+            for work_dict in dict['selWorks']:
+                work_info = WorkInfo(work_dict)
+                work_info.dutydate = dict['dutydate']
+                work_info.dutytimestring = '上午'
+                if work_info.dutytime == 3:
+                    work_info.dutytimestring = '下午'
+                info_list.append(work_info)
+        return info_list
+
+class Work(object):
+    dutydate = ''
+    selWorks = []
+    def __init__(self, dict):
+        self.__dict__ = dict
+
+
+class DoctorSchedule(object):
+    selWork = []
+    doctor = []
+    msg = ''
+    state = ''
+    def __init__(self, dict):
+        self.__dict__ = dict
 
 
 if sys.version_info.major != 3:
@@ -54,83 +145,30 @@ except ModuleNotFoundError as e:
 
 
 class Config(object):
+    __instance = None
+    def __init__(self, config_name='/config.json'):
+        config_path = os.getcwd() + config_name
+        self.config_path = config_path
+        if os.path.exists(config_path):
+            with open(config_path, "r") as file:
+                data = json.load(file)
+                self.hospital = data.get('hospital')
+                self.depart = data.get('depart')
+                self.doctor = data.get('doctor')
+                self.time = data.get('time')
+                self.name = data.get('name')
+                self.certificateid = data.get('certificateid')
+                self.phone = data.get('phone')
 
-    def __init__(self, config_path):
-        try:
-            with open(config_path, "r", encoding="utf-8") as yaml_file:
-                data = yaml.load(yaml_file)
-                debug_level = data["DebugLevel"]
-                if debug_level == "debug":
-                    self.debug_level = logging.DEBUG
-                elif debug_level == "info":
-                    self.debug_level = logging.INFO
-                elif debug_level == "warning":
-                    self.debug_level = logging.WARNING
-                elif debug_level == "error":
-                    self.debug_level = logging.ERROR
-                elif debug_level == "critical":
-                    self.debug_level = logging.CRITICAL
+    def save(self):
+        with open(self.config_path, 'w') as file:
+            json.dump(self.__dict__, file)
 
-                logging.basicConfig(level=self.debug_level,
-                                    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
-                                    datefmt='%a, %d %b %Y %H:%M:%S')
-
-                self.mobile_no = data["username"]
-                self.password = data["password"]
-                self.date = data["date"]
-                self.hospital_id = data["hospitalId"]
-                self.department_id = data["departmentId"]
-                self.duty_code = data["dutyCode"]
-                self.patient_name = data["patientName"]
-                self.hospital_card_id = data["hospitalCardId"]
-                self.medicare_card_id = data["medicareCardId"]
-                self.reimbursement_type = data["reimbursementType"]
-                self.doctorName = data["doctorName"]
-                self.children_name = data["childrenName"]
-                self.children_idno = data["childrenIdNo"]
-                self.cid_type = data["cidType"]
-                self.children = data["children"]
-                self.chooseBest = {"yes": True, "no": False}[data["chooseBest"]]
-                self.patient_id = int()
-                try:
-                    self.useIMessage = data["useIMessage"]
-                except KeyError:
-                    self.useIMessage = "false"
-                try:
-                    self.useQPython3 = data["useQPython3"]
-                except KeyError:
-                    self.useQPython3 = "false"
-                try:
-                    self.children = data["children"]
-                except KeyError:
-                    self.children = "false"
-                #
-                logging.info("配置加载完成")
-                logging.debug("手机号:" + str(self.mobile_no))
-                logging.debug("挂号日期:" + str(self.date))
-                logging.debug("医院id:" + str(self.hospital_id))
-                logging.debug("科室id:" + str(self.department_id))
-                logging.debug("上午/下午:" + str(self.duty_code))
-                logging.debug("就诊人姓名:" + str(self.patient_name))
-                logging.debug("所选医生:" + str(self.doctorName))
-                logging.debug("是否挂儿童号:" + str(self.children))
-                if self.children == "true":
-                    logging.debug("患儿姓名:" + str(self.children_name))
-                    logging.debug("患儿证件号" + str(self.children_idno))
-                    logging.debug("患儿证件类型:" + str(self.cid_type))
-                    logging.debug("患儿性别:" + str(GetInformation(self.children_idno).get_sex()))
-                    logging.debug("患儿生日:" + str(GetInformation(self.children_idno).get_birthday()))
-                logging.debug("使用mac电脑接收验证码:" + str(self.useIMessage))
-                logging.debug("是否使用 QPython3 运行本脚本:" + str(self.useQPython3))
-
-                if not self.date:
-                    logging.error("请填写挂号时间")
-                    exit(-1)
-
-        except Exception as e:
-            logging.error(repr(e))
-            sys.exit()
-
+    @classmethod
+    def instance(cls):
+        if not cls.__instance:
+            cls.__instance = Config()
+        return cls.__instance
 
 class Guahao(object):
     """
@@ -141,48 +179,98 @@ class Guahao(object):
         self.dutys = ""
         self.refresh_time = ''
 
-        self.login_url = "http://www.scgh114.com/web/login"
-        self.send_code_url = "http://www.114yygh.com/v/sendorder.htm"
-        self.get_doctor_url = "http://www.114yygh.com/dpt/partduty.htm"
-        self.confirm_url = "http://www.114yygh.com/order/confirmV1.htm"
-        self.patient_id_url = "http://www.114yygh.com/order/confirm/"
-        self.department_url = "http://www.114yygh.com/dpt/appoint/"
+        self.config = Config()
 
-        self.config = Config(config_path)  # config对象
-        if self.config.useIMessage == 'true':
-            # 按需导入 imessage.py
-            import imessage
-            self.imessage = imessage.IMessage()
-        else:
-            self.imessage = None
 
-        if self.config.useQPython3 == 'true':
-            try:  # Android QPython3 验证
-                # 按需导入 qpython3.py
-                import qpython3
-                self.qpython3 = qpython3.QPython3()
-            except ModuleNotFoundError:
-                self.qpython3 = None
-        else:
-            self.qpython3 = None
+    def output_selection(self, outlist, cls):
+        string = '请输入要选择的序号：\n'
+        for index, item in enumerate(outlist):
+            instance = item
+            if isinstance(item, dict):
+                instance = cls(item)
+            string = '%s%d. %s\n'%(string, index, instance.description())
+        return string
 
     def get_cookie(self):
         cookie_url = "http://www.scgh114.com/"
         self.browser.get(cookie_url,data={})
 
-    def update_hospital_list(self):
+    # 默认成都
+    def input_hospital(self, area_id=10100):
         hospital_list_url = "http://www.scgh114.com/web/hospital/findHospital"
-        area_id = 10100  # 成都
         response = self.browser.post(hospital_list_url, data={'areaId': area_id})
-        logging.info("更新医院列表完成：" + response.text)
-        with open('hospital_list.json', 'w') as file:
-            data = json.loads(response.text)
-            json.dump(data, file, ensure_ascii=False, sort_keys=True, indent=4, separators=(',', ': '))
 
-    def find_depart(self, hospital_id):
+        hospital_list = json.loads(response.text)
+        input_str = input(self.output_selection(hospital_list, Hospital))
+        dict = {}
+        if input_str:
+            dict = hospital_list[int(input_str)]
+            self.config.hospital = dict
+        else:
+            dict = self.config.hospital
+        hospital = Hospital(dict)
+        logging.info(hospital)
+        self.input_depart(hospital.hospitalid)
+
+    # 默认华西
+    def input_depart(self, hospital_id=15):
         url = "http://www.scgh114.com/web/hospital/findDepartByHosId"
         response = self.browser.post(url, data={'hospitalId': hospital_id})
-        logging.info('departs:' + response.text)
+        response_data = json.loads(response.text)
+        list = response_data['responseData']['data']['data']['depart']
+        input_str = input(self.output_selection(list, Depart))
+
+        dict = {}
+        if input_str:
+            dict = list[int(input_str)]
+            self.config.depart = dict
+        else:
+            dict = self.config.depart
+        depart = Depart(dict)
+        self.input_doctor(depart.deptid)
+
+    def input_doctor(self,depart_id):
+        url = 'http://www.scgh114.com/web/hospital/searchDoctor'
+        form = {
+            'deptId': depart_id,
+            'pageIndex': 1,
+            'pageSize': 10,
+            'key': ''
+        }
+        response = self.browser.post(url, data=form)
+        response_data = json.loads(response.text)
+        list = response_data[0]['data']
+        input_str = input(self.output_selection(list, Doctor))
+        dict = {}
+        if input_str:
+            dict = list[int(input_str)]
+            self.config.doctor = dict
+        else:
+            dict = self.config.doctor
+        doctor = Doctor(dict)
+        self.input_time(doctor)
+
+    def input_time(self, doctor:Doctor):
+        url = 'http://www.scgh114.com/web/hospital/findDoctorWorkInfoById'
+        form = {
+            'doctorId': doctor.doctorId,
+        }
+        response = self.browser.post(url, data=form)
+        response_data = json.loads(response.text)
+        list = response_data['data']['selWork']
+        format_list = WorkInfo.formart_workinfo_list(list)
+        input_str = input(self.output_selection(format_list, Doctor))
+        dict = {}
+        if input_str:
+            dict = format_list[int(input_str)].__dict__
+            self.config.time = dict
+        else:
+            dict = self.config.time
+
+        time = WorkInfo(dict)
+
+        doctor.merge(response_data['data']['doctor'][0])
+        self.registered(time, doctor)
 
     def convert_image(slef, img, standard=127.5):
         '''
@@ -238,34 +326,53 @@ class Guahao(object):
             return self.verify_code()
 
 
-    def registered(self):
+    def registered(self, work:WorkInfo, doctor:Doctor):
         url = 'http://www.scgh114.com/web/register/registrationByType'
+        name = input('姓名：')
+        if not name:
+            name = self.config.name
+        else:
+            self.config.name = name
+
+        certificateid = input('身份证号：')
+        if not certificateid:
+            certificateid = self.config.certificateid
+        else:
+            self.config.certificateid = certificateid
+
+        phone = input('手机号：')
+        if not name:
+            phone = self.config.phone
+        else:
+            self.config.phone = phone
+
+        self.config.save()
+
         params = {
-            'workrecordid': 4923097,
-            'hospitalno': 'SYY01',  #医院编号
-            'hospitalname': '四川省人民医院', #医院名称
-            'hospitaid': 88,  #医院id
-            'isRealNameCard': 0, # 实名卡
-            'iscertificateid': 0, # 身份证
-            'workid': 791209, #
-            'dutydate': '2019-08-23', #就诊日期
-            'doctorid':	12617, #医生id
-            'workDutyTimeNum': 	1, # 1表示上午，3表示下午
-            'dutytime': '上午',
-            'doctorName': '曾庆华',
+            'workrecordid': work.workRecordId,
+            'hospitalno': doctor.hospitalNo,  #医院编号
+            'hospitalname': doctor.hospitalName, #医院名称
+            'hospitaid': doctor.hospitalId,  #医院id
+            'isRealNameCard': doctor.isRealNameCard, # 实名卡
+            'iscertificateid': doctor.iscertificateid, # 身份证
+            'workid': work.workId, #
+            'dutydate': work.dutydate, #就诊日期
+            'doctorid':	doctor.doctorId, #医生id
+            'workDutyTimeNum': 	work.dutytime, # 1表示上午，3表示下午
+            'dutytime': work.dutytimestring,
+            'doctorName': doctor.doctorName,
             'type': 	1,
             'hospitalFlag': 	1,
-            'username': '蒋连成',
-            'certificateid': '450325199009171518',
-            'tel': '18611471270',
+            'username': name,
+            'certificateid': certificateid,
+            'tel': phone,
             'txcode': self.verify_code(), #验证码
-            'sex': 	1
+            'sex': 	int(certificateid[16:17])
         }
         response = self.browser.post(url, data=params)
         try:
             data = json.loads(response.text)
             if data["state"] == 0:
-                # patch for qpython3
                 return True
             elif data["msg"] == '':
                 self.auth_login(False)
@@ -321,10 +428,14 @@ class Guahao(object):
             logging.error("登陆失败")
             sys.exit(-1)
 
-    def inputSth(self):
+class Person(object):
+    def __init__(self, name, nickname, age=0):
+        self.name = name
+        self.age = age
+        self.nickname = nickname
+
 
 if __name__ == "__main__":
-
     if (len(sys.argv) == 3) and (sys.argv[1] == '-c') and (isinstance(sys.argv[2], str)):
         config_path = sys.argv[2]
         guahao = Guahao(config_path)
@@ -336,6 +447,7 @@ if __name__ == "__main__":
 
     # guahao.find_depart(15)
     guahao.get_cookie()
-    # guahao.update_hospital_list()
-    guahao.auth_login()
-    guahao.registered()
+    guahao.input_hospital()
+
+    # guahao.auth_login()
+    # guahao.registered()
