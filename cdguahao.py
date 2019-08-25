@@ -66,6 +66,7 @@ class Doctor(object):
     isresidentcard = -1
     isRealNameCard = -1
     registerType = -1
+    hospitalFlag = -1
     def __init__(self, dict):
         self.__dict__ = dict
 
@@ -108,11 +109,6 @@ class WorkInfo(object):
                 info_list.append(work_info)
         return info_list
 
-class Work(object):
-    dutydate = ''
-    selWorks = []
-    def __init__(self, dict):
-        self.__dict__ = dict
 
 
 class DoctorSchedule(object):
@@ -147,6 +143,11 @@ except ModuleNotFoundError as e:
 class Config(object):
     __instance = None
     def __init__(self, config_name='/config.json'):
+
+        logging.basicConfig(level=logging.INFO,
+                            format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
+                            datefmt='%a, %d %b %Y %H:%M:%S')
+
         config_path = os.getcwd() + config_name
         self.config_path = config_path
         if os.path.exists(config_path):
@@ -159,6 +160,8 @@ class Config(object):
                 self.name = data.get('name')
                 self.certificateid = data.get('certificateid')
                 self.phone = data.get('phone')
+                self.password = data.get('password')
+                self.card = data.get('card')
 
     def save(self):
         with open(self.config_path, 'w') as file:
@@ -267,10 +270,113 @@ class Guahao(object):
         else:
             dict = self.config.time
 
-        time = WorkInfo(dict)
-
         doctor.merge(response_data['data']['doctor'][0])
-        self.registered(time, doctor)
+        work = WorkInfo(dict)
+
+        hospital_flag_url = 'http://www.scgh114.com/web/hospital/refreshWorkInfo'
+        response = self.browser.post(hospital_flag_url, data={'workId': work.workId, 'hospitalNo': doctor.hospitalNo})
+        data = json.loads(response.text)
+        doctor.hospitalFlag = data['hospitalFlag']
+
+        self.config.doctor = doctor.__dict__
+        self.config.save()
+
+
+
+    def registered(self):
+        url = 'http://www.scgh114.com/web/register/registrationByType'
+        name = self.config.name
+
+        if not name:
+            name = input('姓名：')
+            self.config.name = name
+
+        certificateid = self.config.certificateid
+
+        if not certificateid:
+            certificateid = input('身份证号：')
+            self.config.certificateid = certificateid
+
+        phone = self.config.phone
+        if not phone:
+            phone = input('手机号：')
+            self.config.phone = phone
+
+        self.config.save()
+        work = WorkInfo(self.config.time)
+        doctor = Doctor(self.config.doctor)
+
+        # 使用实名卡挂号
+        common_params = {
+            'workrecordid': work.workRecordId,
+            'hospitalno': doctor.hospitalNo,  # 医院编号
+            'hospitalname': doctor.hospitalName,  # 医院名称
+            'hospitaid': doctor.hospitalId,  # 医院id
+            'isRealNameCard': doctor.isRealNameCard,  # 实名卡
+            'iscertificateid': 0,  # 身份证
+            'workid': work.workId,  #
+            'dutydate': work.dutydate,  # 就诊日期
+            'doctorid': doctor.doctorId,  # 医生id
+            'workDutyTimeNum': work.dutytime,  # 1表示上午，3表示下午
+            'dutytime': work.dutytimestring,
+            'doctorName': doctor.doctorName,
+            'type': 4,
+            'hospitalFlag': doctor.hospitalFlag,
+        }
+        params = common_params
+        if doctor.iscertificateid == 0:
+            params = {
+                **common_params,
+                'username': name,
+                'certificateid': certificateid,
+                'tel': phone,
+                'txcode': self.verify_code(),  # 验证码
+                'sex': 	int(certificateid[16:17])
+            }
+        else:
+            card = input('请输入医院的实名卡号：')
+            if card:
+                self.config.card = card
+            else:
+                card = self.config.card
+
+            if doctor.hospitalFlag != 0:
+                params = {
+                    **common_params,
+                    'card': card,
+                    'owner': certificateid,
+                    'name': '',
+                    'certificateid': '',
+                    'realnamecardTel': '',
+                    'tel': phone,
+                    'txcode': self.verify_code(),  # 验证码
+                }
+            else:
+                params = {
+                    **common_params,
+                    'card': card,
+                    'owner': '',
+                    'name': name,
+                    'certificateid': certificateid,
+                    'realnamecardTel': phone,
+                    'tel': phone,
+                    'txcode': self.verify_code(),  # 验证码
+                }
+        response = self.browser.post(url, data=params)
+        try:
+            data = json.loads(response.text)
+            if data["state"] == 0:
+                return True
+            elif '重新登录' in data["msg"]:
+                self.auth_login(False)
+                return self.registered()
+            else:
+                logging.error(data["msg"])
+                raise Exception()
+
+        except Exception as e:
+            logging.error(e)
+            sys.exit(-1)
 
     def convert_image(slef, img, standard=127.5):
         '''
@@ -326,67 +432,6 @@ class Guahao(object):
             return self.verify_code()
 
 
-    def registered(self, work:WorkInfo, doctor:Doctor):
-        url = 'http://www.scgh114.com/web/register/registrationByType'
-        name = input('姓名：')
-        if not name:
-            name = self.config.name
-        else:
-            self.config.name = name
-
-        certificateid = input('身份证号：')
-        if not certificateid:
-            certificateid = self.config.certificateid
-        else:
-            self.config.certificateid = certificateid
-
-        phone = input('手机号：')
-        if not name:
-            phone = self.config.phone
-        else:
-            self.config.phone = phone
-
-        self.config.save()
-
-        params = {
-            'workrecordid': work.workRecordId,
-            'hospitalno': doctor.hospitalNo,  #医院编号
-            'hospitalname': doctor.hospitalName, #医院名称
-            'hospitaid': doctor.hospitalId,  #医院id
-            'isRealNameCard': doctor.isRealNameCard, # 实名卡
-            'iscertificateid': doctor.iscertificateid, # 身份证
-            'workid': work.workId, #
-            'dutydate': work.dutydate, #就诊日期
-            'doctorid':	doctor.doctorId, #医生id
-            'workDutyTimeNum': 	work.dutytime, # 1表示上午，3表示下午
-            'dutytime': work.dutytimestring,
-            'doctorName': doctor.doctorName,
-            'type': 	1,
-            'hospitalFlag': 	1,
-            'username': name,
-            'certificateid': certificateid,
-            'tel': phone,
-            'txcode': self.verify_code(), #验证码
-            'sex': 	int(certificateid[16:17])
-        }
-        response = self.browser.post(url, data=params)
-        try:
-            data = json.loads(response.text)
-            if data["state"] == 0:
-                return True
-            elif data["msg"] == '':
-                self.auth_login(False)
-                return self.registered()
-            else:
-                logging.error(data["msg"])
-                raise Exception()
-
-        except Exception as e:
-            logging.error(e)
-            logging.error("登陆失败")
-            sys.exit(-1)
-
-
     def auth_login(self, use_cookie=True):
         """
         登陆
@@ -394,7 +439,7 @@ class Guahao(object):
         if (use_cookie):
             try:
             # patch for qpython3
-                cookies_file = os.path.join(os.path.dirname(sys.argv[0]), "." + self.config.mobile_no + ".cookies")
+                cookies_file = os.path.join(os.path.dirname(sys.argv[0]), "." + self.config.phone + ".cookies")
                 self.browser.load_cookies(cookies_file)
                 logging.info("cookies登录")
                 return True
@@ -403,19 +448,30 @@ class Guahao(object):
 
         logging.info("cookies登录失败")
         logging.info("开始使用账号密码登陆")
-        password = self.config.password
-        mobile_no = self.config.mobile_no
+        phone = input('请输入手机号：')
+        if not phone:
+            phone = self.config.phone
+        else:
+            self.config.phone = phone
+        password = input('请输入登录密码：')
+        if password:
+            self.config.password = password
+        else:
+            password = self.config.password
+
+        mobile_no = phone
         payload = {
             'operLogin': mobile_no.encode(),
             'operPassword': password.encode()
         }
-        response = self.browser.post(self.login_url, data=payload)
+        url = 'http://www.scgh114.com/web/login'
+        response = self.browser.post(url, data=payload)
         logging.info("response data:" + response.text)
         try:
             data = json.loads(response.text)
             if data["state"] == 0:
                 # patch for qpython3
-                cookies_file = os.path.join(os.path.dirname(sys.argv[0]), "." + self.config.mobile_no + ".cookies")
+                cookies_file = os.path.join(os.path.dirname(sys.argv[0]), "." + self.config.phone + ".cookies")
                 self.browser.save_cookies(cookies_file)
                 logging.info("登陆成功:"+data["msg"])
                 return True
@@ -436,18 +492,13 @@ class Person(object):
 
 
 if __name__ == "__main__":
-    if (len(sys.argv) == 3) and (sys.argv[1] == '-c') and (isinstance(sys.argv[2], str)):
-        config_path = sys.argv[2]
-        guahao = Guahao(config_path)
-    else:
-        guahao = Guahao()
-    # guahao.run()
-    # guahao.update_hospital_list()
-    # guahao.auth_login()
 
-    # guahao.find_depart(15)
+    guahao = Guahao()
+
     guahao.get_cookie()
-    guahao.input_hospital()
+    guahao.auth_login()
+    select = input('需要重新选择信息么？ Y or N\n')
+    if select == 'Y' or select == 'y':
+        guahao.input_hospital()
+    guahao.registered()
 
-    # guahao.auth_login()
-    # guahao.registered()
